@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
 	"golang.org/x/oauth2"
@@ -23,20 +27,48 @@ var GOOGLE_AUTH_CLIENTID = os.Getenv("AR_GOOGLE_AUTH_CLIENTID")
 var GOOGLE_AUTH_CLIENTSECRET = os.Getenv("AR_GOOGLE_AUTH_CLIENTSECRET")
 var GOOGLE_AUTH_REDIRECTURL = os.Getenv("AR_GOOGLE_AUTH_REDIRECTURL")
 
+const (
+	GIN_USER_TOKEN = "GOOGLE_TOKEN"
+)
+
 var client mqtt.Client
 
 func main() {
-	initBrockerClient()
+	//initBrockerClient()
 
-	//initGoogleOAuth()
-
+	//init Gin
 	r := gin.Default()
 
-	r.GET("/api/command/:cmd", command)
-	r.POST("/api/signin", signin)
+	//init user session store
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+
+	//unsecured routes
+	r.POST("/api/google_signin", googleSignin)
+	r.POST("/api/google_token", googleToken)
+
+	//secured routes
+	private := r.Group("/private")
+	private.Use(AuthRequired)
+	{
+		private.GET("/api/command/:cmd", command)
+	}
 
 	r.Run()
 
+}
+
+// AuthRequired is a simple middleware to check the session
+func AuthRequired(c *gin.Context) {
+	session := sessions.Default(c)
+	user := session.Get(GIN_USER_TOKEN)
+	if user == nil {
+		// Abort the request with the appropriate error code
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	// Continue down the chain to handler etc
+	c.Next()
 }
 
 func command(c *gin.Context) {
@@ -49,27 +81,86 @@ func command(c *gin.Context) {
 	})
 }
 
-func signin(c *gin.Context) {
+func googleSignin(c *gin.Context) {
 
 	var config = &oauth2.Config{
 		ClientID:     GOOGLE_AUTH_CLIENTID,
 		ClientSecret: GOOGLE_AUTH_CLIENTSECRET,
 		Endpoint:     google.Endpoint,
 		RedirectURL:  GOOGLE_AUTH_REDIRECTURL,
-		Scopes:       []string{"openid"},
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile"},
 	}
 
 	url := config.AuthCodeURL("state", oauth2.AccessTypeOffline)
-	fmt.Printf("Visit the URL for the auth dialog: %v", url)
-
-	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-	//c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-	//c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-	//c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 	c.JSON(200, gin.H{
 		"redirectTo": url,
 	})
+
+}
+
+type GoogleTokenInput struct {
+	Code string `json:"code" binding:"required"`
+}
+
+type GoogleUser struct {
+	Sub        string
+	Name       string
+	GivenName  string
+	FamilyName string
+	Picture    string
+	Locale     string
+}
+
+func googleToken(c *gin.Context) {
+	session := sessions.Default(c)
+
+	var input GoogleTokenInput
+	c.ShouldBindJSON(&input)
+
+	var config = &oauth2.Config{
+		ClientID:     GOOGLE_AUTH_CLIENTID,
+		ClientSecret: GOOGLE_AUTH_CLIENTSECRET,
+		Endpoint:     google.Endpoint,
+		RedirectURL:  GOOGLE_AUTH_REDIRECTURL,
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile"},
+	}
+
+	//get token
+	tok, err := config.Exchange(oauth2.NoContext, input.Code)
+	//log.Println(tok)
+
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	//get user infos
+	response, err := config.Client(oauth2.NoContext, tok).Get("https://www.googleapis.com/oauth2/v3/userinfo")
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	defer response.Body.Close()
+
+	var googleUser GoogleUser
+	err2 := json.NewDecoder(response.Body).Decode(&googleUser)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err2.Error()})
+		return
+	}
+
+	//get u
+	//session.Set(GIN_USER_TOKEN, tok)
+	session.Set(GIN_USER_TOKEN, "toto")
+
+	if err := session.Save(); err != nil {
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
+		return
+	}
+	c.JSON(http.StatusOK, googleUser)
 
 }
 
