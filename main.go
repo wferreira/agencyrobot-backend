@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"encoding/gob"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -28,13 +30,19 @@ var GOOGLE_AUTH_CLIENTSECRET = os.Getenv("AR_GOOGLE_AUTH_CLIENTSECRET")
 var GOOGLE_AUTH_REDIRECTURL = os.Getenv("AR_GOOGLE_AUTH_REDIRECTURL")
 
 const (
-	GIN_USER_TOKEN = "GOOGLE_TOKEN"
+	GOOGLE_TOKEN = "GOOGLE_TOKEN"
 )
 
 var client mqtt.Client
 
 func main() {
 	//initBrockerClient()
+
+	log.Println("----");
+	log.Println(GOOGLE_AUTH_REDIRECTURL);
+	log.Println("----");
+
+	gob.Register(oauth2.Token{})
 
 	//init Gin
 	r := gin.Default()
@@ -61,7 +69,7 @@ func main() {
 // AuthRequired is a simple middleware to check the session
 func AuthRequired(c *gin.Context) {
 	session := sessions.Default(c)
-	user := session.Get(GIN_USER_TOKEN)
+	user := session.Get(GOOGLE_TOKEN)
 	if user == nil {
 		// Abort the request with the appropriate error code
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -135,6 +143,24 @@ func googleToken(c *gin.Context) {
 		return
 	}
 
+	session.Set(GOOGLE_TOKEN, tok)
+
+	getUserInfo(c)
+}
+
+func getUserInfo(c *gin.Context) {
+	session := sessions.Default(c)
+
+	var config = &oauth2.Config{
+		ClientID:     GOOGLE_AUTH_CLIENTID,
+		ClientSecret: GOOGLE_AUTH_CLIENTSECRET,
+		Endpoint:     google.Endpoint,
+		RedirectURL:  GOOGLE_AUTH_REDIRECTURL,
+		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile"},
+	}
+
+	tok := session.Get(GOOGLE_TOKEN).(*oauth2.Token)
+
 	//get user infos
 	response, err := config.Client(oauth2.NoContext, tok).Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
@@ -150,10 +176,6 @@ func googleToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err2.Error()})
 		return
 	}
-
-	//get u
-	//session.Set(GIN_USER_TOKEN, tok)
-	session.Set(GIN_USER_TOKEN, "toto")
 
 	if err := session.Save(); err != nil {
 		log.Println(err)
