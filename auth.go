@@ -67,7 +67,7 @@ func googleToken(c *gin.Context) {
 		return
 	}
 
-	session.Set(GOOGLE_TOKEN, tok)
+	session.Set(GOOGLE_TOKEN, *tok)
 
 	getUserInfo(c)
 }
@@ -83,10 +83,10 @@ func getUserInfo(c *gin.Context) {
 		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.profile"},
 	}
 
-	tok := session.Get(GOOGLE_TOKEN).(*oauth2.Token)
+	tok := session.Get(GOOGLE_TOKEN).(oauth2.Token)
 
 	//get user infos
-	response, err := config.Client(oauth2.NoContext, tok).Get("https://www.googleapis.com/oauth2/v3/userinfo")
+	response, err := config.Client(oauth2.NoContext, &tok).Get("https://www.googleapis.com/oauth2/v3/userinfo")
 	if err != nil {
 		log.Fatal(err)
 		return

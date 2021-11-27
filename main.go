@@ -41,15 +41,22 @@ func main() {
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
 
+	api := r.Group("/api")
+
 	//unsecured routes
-	r.POST("/api/google_signin", googleSignin)
-	r.POST("/api/google_token", googleToken)
+	api.Use()
+	{
+		r.POST("/api/google_signin", googleSignin)
+		r.POST("/api/google_token", googleToken)
+	}
 
 	//secured routes
-	private := r.Group("/private")
+	private := api.Group("/private")
 	private.Use(AuthRequired)
 	{
-		private.GET("/api/command/:cmd", command)
+		private.GET("/user/infos", getUserInfo)
+		private.GET("/command/:cmd", command)
+		private.GET("/robots", listRobots)
 	}
 
 	r.Run()
@@ -76,6 +83,13 @@ func command(c *gin.Context) {
 
 	c.JSON(200, gin.H{
 		"executed command": command,
+	})
+}
+
+func listRobots(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"Robot 1": "toto",
+		"Robot 2": "tutu",
 	})
 }
 
