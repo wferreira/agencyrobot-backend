@@ -2,7 +2,9 @@ package main
 
 import (
 	"net/http"
+	"encoding/json"
 	"os"
+	"log"
 
 	"encoding/gob"
 
@@ -15,7 +17,7 @@ import (
 )
 
 var CLOUDMQTT_URL = os.Getenv("AR_CLOUDMQTT_URL")
-var CLOUDMQTT_TOPIC = os.Getenv("AR_CLOUDMQTT_TOPIC")
+var CLOUDMQTT_TOPICS = os.Getenv("AR_CLOUDMQTT_TOPICS")
 var CLOUDMQTT_USER = os.Getenv("AR_CLOUDMQTT_USER")
 var CLOUDMQTT_PWD = os.Getenv("AR_CLOUDMQTT_PWD")
 
@@ -27,7 +29,15 @@ const (
 	GOOGLE_TOKEN = "GOOGLE_TOKEN"
 )
 
+type Topic struct {
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	Topic     string `json:"topic"`
+}
+
+
 var client mqtt.Client
+var topics []Topic
 
 func main() {
 	//initBrockerClient()
@@ -37,13 +47,19 @@ func main() {
 	//init Gin
 	r := gin.Default()
 
+	//init Topic List
+	err := json.Unmarshal([]byte(CLOUDMQTT_TOPICS), &topics)
+	if err != nil {
+		log.Println("Unable to parse TOPICS", err);
+		return
+	}
+
 	//init user session store
 	store := cookie.NewStore([]byte("secret"))
 	r.Use(sessions.Sessions("mysession", store))
 
-	api := r.Group("/api")
-
 	//unsecured routes
+	api := r.Group("/api")
 	api.Use()
 	{
 		r.POST("/api/google_signin", googleSignin)
@@ -79,7 +95,7 @@ func AuthRequired(c *gin.Context) {
 func command(c *gin.Context) {
 	command := c.Param("cmd")
 
-	client.Publish(CLOUDMQTT_TOPIC, 0, false, command)
+	client.Publish(topics[0].Topic, 0, false, command)
 
 	c.JSON(200, gin.H{
 		"executed command": command,
