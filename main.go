@@ -29,7 +29,7 @@ const (
 	GOOGLE_TOKEN = "GOOGLE_TOKEN"
 )
 
-type Topic struct {
+type Robot struct {
 	Id        string `json:"id"`
 	Name      string `json:"name"`
 	Topic     string `json:"topic"`
@@ -37,18 +37,18 @@ type Topic struct {
 
 
 var client mqtt.Client
-var topics []Topic
+var robots []Robot
 
 func main() {
-	//initBrockerClient()
+	initBrockerClient()
 
 	gob.Register(oauth2.Token{})
 
 	//init Gin
 	r := gin.Default()
 
-	//init Topic List
-	err := json.Unmarshal([]byte(CLOUDMQTT_TOPICS), &topics)
+	//init Topic List (one topic per robot)
+	err := json.Unmarshal([]byte(CLOUDMQTT_TOPICS), &robots)
 	if err != nil {
 		log.Println("Unable to parse TOPICS", err);
 		return
@@ -71,7 +71,7 @@ func main() {
 	private.Use(AuthRequired)
 	{
 		private.GET("/user/infos", getUserInfo)
-		private.GET("/command/:cmd", command)
+		private.GET("/command/:robotId/:cmd", command)
 		private.GET("/robots", listRobots)
 	}
 
@@ -93,19 +93,25 @@ func AuthRequired(c *gin.Context) {
 }
 
 func command(c *gin.Context) {
+	robotId := c.Param("robotId")
 	command := c.Param("cmd")
 
-	client.Publish(topics[0].Topic, 0, false, command)
+	for _, robot := range robots {
+        if robot.Id == robotId {
+			client.Publish(robot.Topic, 0, false, command)
 
-	c.JSON(200, gin.H{
-		"executed command": command,
-	})
+			c.JSON(200, gin.H{
+				"executed command": command,
+			})
+			return;
+        }
+    }
+
+	c.JSON(http.StatusBadRequest, gin.H{"error": "unknown robot id"})
+	
 }
 
 func listRobots(c *gin.Context) {
-	c.JSON(200, gin.H{
-		"Robot 1": "toto",
-		"Robot 2": "tutu",
-	})
+	c.JSON(200, robots)
 }
 
