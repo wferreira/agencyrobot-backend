@@ -106,6 +106,7 @@ func getUserInfo(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save session"})
 		return
 	}
+
 	c.JSON(http.StatusOK, googleUser)
 
 }

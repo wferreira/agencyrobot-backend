@@ -9,7 +9,6 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-
 func initBrockerClient() {
 	//uri, err := url.Parse(os.Getenv("CLOUDMQTT_URL"))
 	uri, err := url.Parse(CLOUDMQTT_URL)
