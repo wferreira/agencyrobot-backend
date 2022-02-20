@@ -47,7 +47,7 @@ var client mqtt.Client
 var robots []Robot
 
 func main() {
-	//initBrockerClient()
+	initBrockerClient()
 
 	gob.Register(oauth2.Token{})
 
